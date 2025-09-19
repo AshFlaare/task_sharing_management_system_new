@@ -6,6 +6,7 @@ pipeline {
         PM2_CMD = 'C:\\Users\\ashflaare\\AppData\\Roaming\\npm\\pm2.cmd'
         PYTHON_EXE = 'C:\\Program Files\\Python313\\python.exe'
         TARGET_DIR = 'C:\\Users\\ashflaare\\Desktop\\study\\4_c\\devops\\project_serv'
+        REPO_URL = 'https://github.com/AshFlaare/task_sharing_management_system_new.git'
     }
 
     triggers { 
@@ -13,56 +14,27 @@ pipeline {
     }
 
     stages {
-        stage('Start Backend Server') {
+        stage('Checkout code') {
+            when { branch 'fix' }
             steps {
-                bat """
-                    cd "${TARGET_DIR}"
-
-                    call "${PM2_CMD}" delete django || echo No existing Django process
-
-                    call "${PM2_CMD}" start "${PYTHON_EXE}" --name django -- manage.py runserver 127.0.0.1:8000
-                """
-            }
-        }
-
-        stage('Start Frontend Server') {
-            steps {
-                bat """
-                    cd "${TARGET_DIR}\\client"
-
-                    call "${PM2_CMD}" delete vue || echo No existing Vue process
-
-                    call "${PM2_CMD}" start "${CMD}" --name vue -- /c "cd ${TARGET_DIR}\\client && npm run dev"
-
-                    echo Frontend started in background via PM2
-                """
+                git branch: 'fix',
+                    url: "${REPO_URL}",
+                    credentialsId: 'github-creds'
             }
         }
 
         stage('Run Tests') {
             steps {
-                script {
-                    try {
-                        bat """
-                            cd "${TARGET_DIR}"
-                            "${PYTHON_EXE}" application\\integrationtests.py
-                        """
-                        echo "Tests passed! Keeping servers running."
-                    } catch (err) {
-                        echo "Tests failed! Stopping servers..."
-
-                        bat """
-                            "${PM2_CMD}" delete django || echo No Django process to delete
-                            "${PM2_CMD}" delete vue || echo No Vue process to delete
-                        """
-                        error("Integration tests failed. Servers stopped.")
-                    }
-                }
+                bat """
+                    cd "${TARGET_DIR}"
+                    "${PYTHON_EXE}" application\\integrationtests.py
+                """
             }
         }
-        stage('Merge fix into main and sync fix') {
+
+        stage('Merge fix -> main') {
             when {
-                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
+                branch 'fix'
             }
             steps {
                 withCredentials([
@@ -75,35 +47,43 @@ pipeline {
                         git config user.email "%GIT_EMAIL%"
 
                         git checkout main
-                        git pull --rebase https://%GIT_USER%:%GIT_TOKEN%@github.com/AshFlaare/task_sharing_management_system.git main
+                        git pull https://%GIT_USER%:%GIT_TOKEN%@github.com/AshFlaare/task_sharing_management_system_new.git main
 
-                        :: Сливаем fix
                         git merge fix
 
-                        git push https://%GIT_USER%:%GIT_TOKEN%@github.com/AshFlaare/task_sharing_management_system.git main
+                        git push https://%GIT_USER%:%GIT_TOKEN%@github.com/AshFlaare/task_sharing_management_system_new.git main
 
-                        :: Теперь синхронизируем fix с main (чтобы обе ветки идентичны)
                         git checkout fix
-                        git reset --hard main
-                        git push --force https://%GIT_USER%:%GIT_TOKEN%@github.com/AshFlaare/task_sharing_management_system.git fix
-
-                        :: Перезапуск серверов
-                        call "${PM2_CMD}" delete django || echo No Django process
-                        call "${PM2_CMD}" start "${PYTHON_EXE}" --name django -- manage.py runserver 127.0.0.1:8000
-
-                        call "${PM2_CMD}" delete vue || echo No Vue process
-                        call "${PM2_CMD}" start "${CMD}" --name vue -- /c "cd ${TARGET_DIR}\\client && npm run dev"
+                        git merge main
+                        git push https://%GIT_USER%:%GIT_TOKEN%@github.com/AshFlaare/task_sharing_management_system_new.git fix
                     """
                 }
+            }
+        }
+
+        stage('Restart Servers') {
+            steps {
+                bat """
+                    call "${PM2_CMD}" delete django || echo No Django process
+                    call "${PM2_CMD}" start "${PYTHON_EXE}" --name django -- manage.py runserver 127.0.0.1:8000
+
+                    call "${PM2_CMD}" delete vue || echo No Vue process
+                    call "${PM2_CMD}" start "${CMD}" --name vue -- /c "cd ${TARGET_DIR}\\client && npm run dev"
+                """
             }
         }
     }
 
     post {
         success {
-            echo "Backend and Frontend are running via PM2!"
+            echo "✅ Build & Tests passed!"
+            echo "✅ Code merged fix → main."
+            echo "✅ Backend and Frontend restarted via PM2."
             echo "Backend: http://127.0.0.1:8000/"
             echo "Frontend: http://127.0.0.1:5173/"
+        }
+        failure {
+            echo "❌ Tests failed, merge skipped, servers not updated."
         }
     }
 }
