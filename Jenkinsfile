@@ -14,12 +14,23 @@ pipeline {
     }
 
     stages {
-        stage('Checkout code') {
-            when { branch 'fix' }
+        stage('Prepare code in project_serv') {
             steps {
-                git branch: 'fix',
-                    url: "${REPO_URL}",
-                    credentialsId: 'github-creds'
+                withCredentials([usernamePassword(credentialsId: 'github-creds', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
+                    bat """
+                        if not exist "${TARGET_DIR}\\.git" (
+                            echo Project not found in project_serv, cloning fresh...
+                            rmdir /S /Q "${TARGET_DIR}" 2>nul || echo No old folder
+                            git clone -b fix https://%GIT_USER%:%GIT_TOKEN%@github.com/AshFlaare/task_sharing_management_system_new.git "${TARGET_DIR}"
+                        ) else (
+                            echo Project exists, updating...
+                            cd "${TARGET_DIR}"
+                            git reset --hard
+                            git clean -fd
+                            git pull https://%GIT_USER%:%GIT_TOKEN%@github.com/AshFlaare/task_sharing_management_system_new.git fix
+                        )
+                    """
+                }
             }
         }
 
@@ -33,9 +44,6 @@ pipeline {
         }
 
         stage('Merge fix -> main') {
-            when {
-                branch 'fix'
-            }
             steps {
                 withCredentials([
                     usernamePassword(credentialsId: 'github-creds', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN'),
@@ -64,6 +72,8 @@ pipeline {
         stage('Restart Servers') {
             steps {
                 bat """
+                    cd "${TARGET_DIR}"
+
                     call "${PM2_CMD}" delete django || echo No Django process
                     call "${PM2_CMD}" start "${PYTHON_EXE}" --name django -- manage.py runserver 127.0.0.1:8000
 
