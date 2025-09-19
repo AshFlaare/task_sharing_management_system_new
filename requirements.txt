@@ -1,0 +1,8 @@
+Django
+
+django-mssql-backend
+pyodbc
+mssql-django
+djangorestframework
+python-dotenv
+requests
