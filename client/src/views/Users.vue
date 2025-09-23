@@ -74,6 +74,11 @@
           </div>
         </div>
 
+        <!-- Блок с количеством пользователей -->
+<div class="user-count mb-4 p-3 bg-light rounded">
+<h4>Общее количество пользователей: {{ countUsers }}</h4>
+</div>
+
 
 
 
@@ -280,11 +285,16 @@ const userToDelete = ref([]);
 const emailError = ref("");
 const submitError = ref("");
 
+const countUsers = ref();
+
+
 
 async function fetchUsers() {
   // Выполняем запрос для получения всех пользователей
   const response = await axios.get("/api/users/"); // Запрос к API
   users.value = response.data; // Сохраняем пользователей в переменной
+  // Устанавливаем количество пользователей
+countUsers.value = users.value.length
 }
 async function fetchRoles() {
     const r = await axios.get("/api/roles/");
