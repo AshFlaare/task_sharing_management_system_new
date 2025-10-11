@@ -1,0 +1,31 @@
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: application/Dockerfile
+    container_name: backend
+    volumes:
+      - ./app:/app/app
+      - ./manage.py:/app/manage.py
+      - ./data:/app/data
+    expose:
+      - "8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: >
+      sh -c "
+        python manage.py start_system &&
+        python manage.py runserver 0.0.0.0:8000
+      "
+
+  nginx:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+    container_name: nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - backend

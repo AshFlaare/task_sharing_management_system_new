@@ -2,28 +2,25 @@ pipeline {
     agent any
 
     environment {
-        CMD = 'C:\\Windows\\System32\\cmd.exe'
-        PM2_CMD = 'C:\\Users\\ashflaare\\AppData\\Roaming\\npm\\pm2.cmd'
-        PYTHON_EXE = 'C:\\Program Files\\Python313\\python.exe'
         TARGET_DIR = 'C:\\Users\\ashflaare\\Desktop\\study\\4_c\\devops\\project_serv'
         REPO_URL = 'https://github.com/AshFlaare/task_sharing_management_system_new.git'
     }
 
-    triggers { 
-        githubPush() 
+    triggers {
+        githubPush()
     }
 
     stages {
-        stage('Prepare code in project_serv') {
+        stage('Clone or Update Code') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'github-creds', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
                     bat """
                         if not exist "${TARGET_DIR}\\.git" (
-                            echo Project not found in project_serv, cloning fresh...
+                            echo Cloning fresh repo...
                             rmdir /S /Q "${TARGET_DIR}" 2>nul || echo No old folder
                             git clone -b fix https://%GIT_USER%:%GIT_TOKEN%@github.com/AshFlaare/task_sharing_management_system_new.git "${TARGET_DIR}"
                         ) else (
-                            echo Project exists, updating...
+                            echo Updating existing repo...
                             cd "${TARGET_DIR}"
                             git reset --hard
                             git clean -fd
@@ -34,51 +31,48 @@ pipeline {
             }
         }
 
-        stage('Run Tests') {
+        stage('Run Backend Tests') {
             steps {
                 bat """
                     cd "${TARGET_DIR}"
-                    "${PYTHON_EXE}" application\\integrationtests.py
+                    docker compose run --rm backend python manage.py test
                 """
             }
         }
 
-        stage('Merge fix -> main') {
-            steps {
-                withCredentials([
-                    usernamePassword(credentialsId: 'github-creds', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN'),
-                    string(credentialsId: 'github-email', variable: 'GIT_EMAIL')
-                ]) {
-                    bat """
-                        cd "${TARGET_DIR}"
-                        git config user.name "%GIT_USER%"
-                        git config user.email "%GIT_EMAIL%"
-
-                        git checkout main
-                        git pull https://%GIT_USER%:%GIT_TOKEN%@github.com/AshFlaare/task_sharing_management_system_new.git main
-
-                        git merge fix
-
-                        git push https://%GIT_USER%:%GIT_TOKEN%@github.com/AshFlaare/task_sharing_management_system_new.git main
-
-                        git checkout fix
-                        git merge main
-                        git push https://%GIT_USER%:%GIT_TOKEN%@github.com/AshFlaare/task_sharing_management_system_new.git fix
-                    """
-                }
-            }
-        }
-
-        stage('Restart Servers') {
+        stage('Build Containers') {
             steps {
                 bat """
                     cd "${TARGET_DIR}"
+                    docker compose build
+                """
+            }
+        }
 
-                    call "${PM2_CMD}" delete django || echo No Django process
-                    call "${PM2_CMD}" start "${PYTHON_EXE}" --name django -- manage.py runserver 127.0.0.1:8000
+        stage('Restart Application') {
+            steps {
+                bat """
+                    cd "${TARGET_DIR}"
+                    docker compose down
+                    docker compose up -d
+                """
+            }
+        }
 
-                    call "${PM2_CMD}" delete vue || echo No Vue process
-                    call "${PM2_CMD}" start "${CMD}" --name vue -- /c "cd ${TARGET_DIR}\\client && npm run dev"
+        stage('Push Docker Images to Local Registry') {
+            when {
+                expression { return fileExists("${TARGET_DIR}\\\\docker-compose.yml") }
+            }
+            steps {
+                bat """
+                    echo Pushing Docker images to local registry...
+                    docker tag backend localhost:5000/backend:latest
+                    docker tag frontend localhost:5000/frontend:latest
+                    docker tag nginx localhost:5000/nginx:latest
+
+                    docker push localhost:5000/backend:latest
+                    docker push localhost:5000/frontend:latest
+                    docker push localhost:5000/nginx:latest
                 """
             }
         }
@@ -86,14 +80,13 @@ pipeline {
 
     post {
         success {
-            echo "✅ Build & Tests passed!"
-            echo "✅ Code merged fix → main."
-            echo "✅ Backend and Frontend restarted via PM2."
-            echo "Backend: http://127.0.0.1:8000/"
-            echo "Frontend: http://127.0.0.1:5173/"
+            echo "Build & Tests passed successfully!"
+            echo "Containers rebuilt and restarted."
+            echo "Backend: http://localhost:8000/"
+            echo "Frontend (via Nginx): http://localhost/"
         }
         failure {
-            echo "❌ Tests failed, merge skipped, servers not updated."
+            echo "Tests failed or build error occurred."
         }
     }
 }
