@@ -8,7 +8,7 @@ services:
       - "5000:5000"
     restart: always
     volumes:
-      - ./data/registry:/var/lib/registry
+      - registry_data:/var/lib/registry
 
   backend:
     build:
@@ -19,7 +19,7 @@ services:
     volumes:
       - ./app:/app/app
       - ./manage.py:/app/manage.py
-      - ./data:/app/data
+      - db_data:/app/data
     expose:
       - "8000"
     environment:
@@ -40,3 +40,7 @@ services:
       - "80:80"
     depends_on:
       - backend
+
+volumes:
+  registry_data:
+  db_data:
