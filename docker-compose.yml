@@ -1,5 +1,10 @@
 version: "3.9"
-
+registry:
+    image: registry:2
+    container_name: local-registry
+    ports:
+      - "5000:5000"
+    restart: always
 services:
   backend:
     build:
