@@ -11,6 +11,7 @@ pipeline {
     }
 
     stages {
+
         stage('Clone or Update Code') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'github-creds', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
@@ -37,6 +38,39 @@ pipeline {
                     cd "${TARGET_DIR}"
                     docker compose run --rm backend python manage.py test
                 """
+            }
+        }
+
+        stage('Merge fix -> main') {
+            when {
+                expression { currentBuild.currentResult == 'SUCCESS' }
+            }
+            steps {
+                withCredentials([
+                    usernamePassword(credentialsId: 'github-creds', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN'),
+                    string(credentialsId: 'github-email', variable: 'GIT_EMAIL')
+                ]) {
+                    bat """
+                        cd "${TARGET_DIR}"
+                        git config user.name "%GIT_USER%"
+                        git config user.email "%GIT_EMAIL%"
+
+                        echo Checking out main branch...
+                        git checkout main
+                        git pull https://%GIT_USER%:%GIT_TOKEN%@github.com/AshFlaare/task_sharing_management_system_new.git main
+
+                        echo Merging fix -> main...
+                        git merge fix -m "Auto-merge from Jenkins after successful tests"
+
+                        echo Pushing main...
+                        git push https://%GIT_USER%:%GIT_TOKEN%@github.com/AshFlaare/task_sharing_management_system_new.git main
+
+                        echo Syncing fix with main...
+                        git checkout fix
+                        git merge main -m "Sync fix with main"
+                        git push https://%GIT_USER%:%GIT_TOKEN%@github.com/AshFlaare/task_sharing_management_system_new.git fix
+                    """
+                }
             }
         }
 
@@ -67,11 +101,9 @@ pipeline {
                 bat """
                     echo Pushing Docker images to local registry...
                     docker tag backend localhost:5000/backend:latest
-                    docker tag frontend localhost:5000/frontend:latest
                     docker tag nginx localhost:5000/nginx:latest
 
                     docker push localhost:5000/backend:latest
-                    docker push localhost:5000/frontend:latest
                     docker push localhost:5000/nginx:latest
                 """
             }
@@ -80,13 +112,14 @@ pipeline {
 
     post {
         success {
-            echo "Build & Tests passed successfully!"
-            echo "Containers rebuilt and restarted."
-            echo "Backend: http://localhost:8000/"
-            echo "Frontend (via Nginx): http://localhost/"
+            echo "Build & Tests passed!"
+            echo "Code merged fix → main."
+            echo "Containers rebuilt and pushed to local registry."
+            echo "Backend restarted at http://localhost:8000/"
+            echo "Frontend (via Nginx) at http://localhost/"
         }
         failure {
-            echo "Tests failed or build error occurred."
+            echo "Tests failed, merge and deployment skipped."
         }
     }
 }
