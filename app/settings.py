@@ -20,8 +20,7 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Folder for database
-DATA_DIR = os.path.join(BASE_DIR, '..', 'data')
-os.makedirs(DATA_DIR, exist_ok=True)
+DATA_DIR = os.path.join(BASE_DIR, 'data')
 
 
 # Quick-start development settings - unsuitable for production
@@ -88,7 +87,7 @@ WSGI_APPLICATION = "app.wsgi.application"
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join(DATA_DIR, 'db.sqlite3'),
+        'NAME': '/app/data/db.sqlite3',
     }
 }
 
