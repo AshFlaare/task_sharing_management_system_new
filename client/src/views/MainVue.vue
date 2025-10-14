@@ -30,7 +30,7 @@ onBeforeMount((async) => {
 
 <template>
   <div class="main-container">
-    <h1 class="mb-4 text-center">Добро пожаловать!^_^^_^</h1>
+    <h1 class="mb-4 text-center">Добро пожаловать!</h1>
     
     <div class="role-badge mb-4">
       <span class="badge" :class="{
