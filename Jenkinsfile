@@ -4,6 +4,8 @@ pipeline {
     environment {
         TARGET_DIR = 'C:\\Users\\ashflaare\\Desktop\\study\\4_c\\devops\\project_serv'
         REPO_URL = 'https://github.com/AshFlaare/task_sharing_management_system_new.git'
+        BUILD_VERSION = "${BUILD_NUMBER}"
+        REGISTRY = "localhost:5000"
     }
 
     triggers {
@@ -11,7 +13,6 @@ pipeline {
     }
 
     stages {
-
         stage('Clone or Update Code') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'github-creds', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN')]) {
@@ -83,6 +84,26 @@ pipeline {
             }
         }
 
+        stage('Tag & Push Docker Images to Local Registry') {
+            steps {
+                bat """
+                    echo Tagging and pushing images to registry...
+
+                    docker tag backend ${REGISTRY}/backend:build-${BUILD_VERSION}
+                    docker tag nginx ${REGISTRY}/nginx:build-${BUILD_VERSION}
+
+                    docker push ${REGISTRY}/backend:build-${BUILD_VERSION}
+                    docker push ${REGISTRY}/nginx:build-${BUILD_VERSION}
+
+                    echo Also update latest tags...
+                    docker tag backend ${REGISTRY}/backend:latest
+                    docker tag nginx ${REGISTRY}/nginx:latest
+                    docker push ${REGISTRY}/backend:latest
+                    docker push ${REGISTRY}/nginx:latest
+                """
+            }
+        }
+
         stage('Restart Application') {
             steps {
                 bat """
@@ -92,31 +113,15 @@ pipeline {
                 """
             }
         }
-
-        stage('Push Docker Images to Local Registry') {
-            when {
-                expression { return fileExists("${TARGET_DIR}\\\\docker-compose.yml") }
-            }
-            steps {
-                bat """
-                    echo Pushing Docker images to local registry...
-                    docker tag backend localhost:5000/backend:latest
-                    docker tag nginx localhost:5000/nginx:latest
-
-                    docker push localhost:5000/backend:latest
-                    docker push localhost:5000/nginx:latest
-                """
-            }
-        }
     }
 
     post {
         success {
             echo "Build & Tests passed!"
             echo "Code merged fix → main."
-            echo "Containers rebuilt and pushed to local registry."
+            echo "Containers tagged and pushed as build-${BUILD_NUMBER}"
             echo "Backend restarted at http://localhost:8000/"
-            echo "Frontend (via Nginx) at http://localhost/"
+            echo "Frontend via Nginx at http://localhost/"
         }
         failure {
             echo "Tests failed, merge and deployment skipped."
